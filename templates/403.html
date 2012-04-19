@@ -1,0 +1,15 @@
+{% load i18n %}
+<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
+   "http://www.w3.org/TR/html4/strict.dtd">
+<HTML>
+  <HEAD>
+    <TITLE>{% blocktrans with request.META.PATH as path %}You get access denied to {{ path }}.{% endblocktrans %}</TITLE>
+  </HEAD>
+  <BODY>
+    <h2 style="color: red; text-decoration: underline;">{% trans "Access denied."%}</h2>
+    <p style="color: white; background: #c3c3c3; padding: 30px; font-weight: bold;">
+    {% if message %}{{ message }}{% else %}
+      {% blocktrans with request.META.PATH_INFO as path %}We're sorry, but your access are denied to the {{ path }}.{% endblocktrans %}
+    {% endif %}</p>
+  </BODY>
+</HTML>
