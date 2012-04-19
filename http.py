@@ -1,67 +1,71 @@
-#encoding: UTF-8
-
 from django.conf import settings
 from django.core.exceptions import ViewDoesNotExist
-from django.http import HttpResponseForbidden
+from django.http import HttpResponse
 from django.template import RequestContext,Template,loader,TemplateDoesNotExist
 from django.utils.importlib import import_module
+import httplib
 
-"""
-# This is exception for one Http403 response, 403 code is HttpForbidden, django
-# provide a HttpResponseForbidden class, but isn't handled as Http404
-# exception, this code is write to make it functional.
-"""
+class HttpException(Exception):
+    """ Exception for Http Errors"""
+	def __init__(self, message, status=500):
+		self.status = status
+		super(HttpException, self).__init__(message)
 
-class Http403(Exception):
-  """ Exception for Http Forbidden """
-  pass
+class HttpExceptionMiddleware(object):
+	"""
+	Replace Status code raises for a {{status}}.html rendered template
+	"""
+	def process_exception(self, request, exception):
+		"""
+		Render a {{status}}.html template or a hardcoded html as status page, but only if
+		exception is instance of HttpException class
+		"""
+		# we need to import to use isinstance
+		from http import HttpException
+		if not isinstance(exception,HttpException):
+			# Return None make that django reraise exception:
+			# http://docs.djangoproject.com/en/dev/topics/http/middleware/#process_exception
+			return None
 
-class Http403Middleware(object):
-  """
-  Replace Http403 raises for a 403.html rendered template
-  """
-  def process_exception(self, request, exception):
-    """
-    Render a 403.html template or a hardcoded html as denied page, but only if
-    exception is instance of Http403 class
-    """
-    # we need to import to use isinstance
-    from http import Http403
-    if not isinstance(exception,Http403):
-      # Return None make that django reraise exception:
-      # http://docs.djangoproject.com/en/dev/topics/http/middleware/#process_exception
-      return None
-
-    try:
-      # Handle import error but allow any type error from view
-      callback = getattr(import_module(settings.ROOT_URLCONF),'handler403')
-      return callback(request,exception)
-    except (ImportError,AttributeError),e:
-      # doesn't exist a handler403, try get template
-      try:
-        t = loader.get_template('403.html')
-      except TemplateDoesNotExist:
-        # doesn't exist a template in path, use hardcoded template
-        t = Template("""{% load i18n %}
+		print exception.status
+	
+		try:
+			# Handle import error but allow any type error from view
+			callback = getattr(import_module(settings.ROOT_URLCONF),'handler' + str(exception.status))
+			return callback(request,exception)
+		except (ImportError,AttributeError),e:
+			# doesn't exist a handler{{status}}, try get template
+			try:
+				t = loader.get_template(str(exception.status) + '.html')
+			except TemplateDoesNotExist:
+				# doesn't exist a template in path, use hardcoded template
+				t = Template("""
 <!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01//EN"
    "http://www.w3.org/TR/html4/strict.dtd">
 <HTML>
   <HEAD>
-    <TITLE>{% blocktrans with request.META.PATH as path %}You get access denied to {{ path }}.{% endblocktrans %}</TITLE>
+    <TITLE>
+    {% if message %}
+		{{message}}
+	{% else %}
+    Sorry {{w3cname}} error to {{ request.META.PATH }}.
+    {% endif%}
+    </TITLE>
   </HEAD>
   <BODY>
-    <h2>{% trans "Access denied."%}</h2>
-    <p>
-    {% if message %}{{ message }}{% else %}
-      {% blocktrans with request.META.PATH_INFO as path %}We're sorry, but your access are denied to the {{ path }}.{% endblocktrans %}
-    {% endif %}</p>
+    <h2>{{w3cname}}</h2>
+    <p>{% if message %}
+		{{message}}
+	{% else %}
+    Sorry {{w3cname}} error to {{ request.META.PATH }}.
+    {% endif%}</p>
   </BODY>
 </HTML>""")
 
-      # now use context and render template      
-      c = RequestContext(request, {
-        'message': exception.message
-      })
+		# now use context and render template      
+		c = RequestContext(request, {
+		'message': exception.message,
+		'w3cname': httplib.responses.get(exception.status, str(exception.status))
+		})
       
-      return HttpResponseForbidden(t.render(c))
-
+		return HttpResponse(t.render(c), status=exception.status)
